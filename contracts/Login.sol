@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.17;
 
+/// @title Intentionally insecure on-chain login example
+/// @notice Demonstrates that `private` state variables are still readable from storage.
 contract Login {
-    //private variables 
-    //Each bytes32 variable would occupy one slot
-    //beacause bytes32 variable has 256 bits which is the size of the slot
-
-    //slot 0
+    // slot 0
     bytes32 private username;
 
-    //slot 1
+    // slot 1
     bytes32 private password;
 
     constructor(bytes32 _username, bytes32 _password) {
         username = _username;
         password = _password;
+    }
+
+    function authenticate(bytes32 suppliedUsername, bytes32 suppliedPassword)
+        external
+        view
+        returns (bool)
+    {
+        return suppliedUsername == username && suppliedPassword == password;
     }
 }

@@ -1,27 +1,54 @@
 const { ethers } = require("hardhat");
 const { expect } = require("chai");
 
-describe("Attack", function () {
-  it("should be able to read the private variables password and username", async function() {
-    //Deploy the login contract
-    const loginFactory = await ethers.getContractFactory("Login");
+describe("Login", function () {
+  async function deployLogin() {
+    const Login = await ethers.getContractFactory("Login");
+    const username = "test";
+    const password = "password";
 
-    //To save space we would convert the string to bytes32 array
-    const usernameBytes = ethers.utils.formatBytes32String("test");
-    const passwordBytes = ethers.utils.formatBytes32String("password");
-
-    const loginContract = await loginFactory.deploy(
-      usernameBytes,
-      passwordBytes
+    const login = await Login.deploy(
+      ethers.encodeBytes32String(username),
+      ethers.encodeBytes32String(password)
     );
-    await loginContract.deployed();
+    await login.waitForDeployment();
 
-    //Get the storage at storage slot 0,1
-    const slot0Bytes = await ethers.provider.getStorageAt(loginContract.address, 0);
-    const slot1Bytes = await ethers.provider.getStorageAt(loginContract.address, 1);
+    return { login, username, password };
+  }
 
-    //we are able to extract the values of private variables
-    expect(ethers.utils.parseBytes32String(slot0Bytes)).to.equal("test");
-    expect(ethers.utils.parseBytes32String(slot1Bytes)).to.equal("password");
-  })
-})
+  async function readSlot(contract, slot) {
+    return ethers.provider.send("eth_getStorageAt", [
+      await contract.getAddress(),
+      ethers.toBeHex(slot),
+      "latest",
+    ]);
+  }
+
+  it("authenticates when the stored credentials are provided", async function () {
+    const { login, username, password } = await deployLogin();
+
+    expect(
+      await login.authenticate(
+        ethers.encodeBytes32String(username),
+        ethers.encodeBytes32String(password)
+      )
+    ).to.equal(true);
+
+    expect(
+      await login.authenticate(
+        ethers.encodeBytes32String(username),
+        ethers.encodeBytes32String("wrong-password")
+      )
+    ).to.equal(false);
+  });
+
+  it("leaks private state through raw storage reads", async function () {
+    const { login, username, password } = await deployLogin();
+
+    const slot0Bytes = await readSlot(login, 0);
+    const slot1Bytes = await readSlot(login, 1);
+
+    expect(ethers.decodeBytes32String(slot0Bytes)).to.equal(username);
+    expect(ethers.decodeBytes32String(slot1Bytes)).to.equal(password);
+  });
+});

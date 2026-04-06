@@ -1,30 +1,49 @@
-// We require the Hardhat Runtime Environment explicitly here. This is optional
-// but useful for running the script in a standalone fashion through `node <script>`.
-//
-// You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
-// will compile your contracts, add the Hardhat Runtime Environment's members to the
-// global scope, and execute the script.
 const hre = require("hardhat");
+const { encodeBytes32String } = require("ethers");
+
+function encodeSecret(value, label) {
+  try {
+    return encodeBytes32String(value);
+  } catch (error) {
+    throw new Error(
+      `${label} must be 31 bytes or fewer when UTF-8 encoded so it fits in a bytes32 value.`,
+      { cause: error }
+    );
+  }
+}
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
+  const username = process.env.LOGIN_USERNAME ?? "demo-user";
+  const password = process.env.LOGIN_PASSWORD ?? "not-a-secret";
 
-  const lockedAmount = hre.ethers.utils.parseEther("1");
+  const Login = await hre.ethers.getContractFactory("Login");
+  const login = await Login.deploy(
+    encodeSecret(username, "LOGIN_USERNAME"),
+    encodeSecret(password, "LOGIN_PASSWORD")
+  );
+  await login.waitForDeployment();
 
-  const Lock = await hre.ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+  const address = await login.getAddress();
+  const slot0 = await hre.ethers.provider.send("eth_getStorageAt", [
+    address,
+    hre.ethers.toBeHex(0),
+    "latest",
+  ]);
+  const slot1 = await hre.ethers.provider.send("eth_getStorageAt", [
+    address,
+    hre.ethers.toBeHex(1),
+    "latest",
+  ]);
 
-  await lock.deployed();
-
+  console.log(`Login deployed to: ${address}`);
+  console.log(`Username configured: ${username}`);
+  console.log(`Slot 0 (username): ${slot0}`);
+  console.log(`Slot 1 (password): ${slot1}`);
   console.log(
-    `Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`
+    "This contract is intentionally insecure: any node can recover the stored credentials from chain storage."
   );
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
